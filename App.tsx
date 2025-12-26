@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useLayoutEffect } from 'react';
 import { 
   ChartBarIcon, 
@@ -11,7 +10,8 @@ import {
   ViewColumnsIcon,
   ArrowDownTrayIcon,
   ArrowUpTrayIcon,
-  Bars3BottomLeftIcon
+  Bars3BottomLeftIcon,
+  PhotoIcon
 } from '@heroicons/react/24/outline';
 import { BlockType, ChartType, LayoutBlock, AppState } from './types';
 import { BLOCK_DEFAULTS, GRID_COLUMNS, GRID_ROWS, CANVAS_WIDTH, A3_WIDTH_RATIO, COL_WIDTH } from './constants';
@@ -38,15 +38,16 @@ const App: React.FC = () => {
     const updateScale = () => {
       if (workspaceRef.current) {
         const { width, height } = workspaceRef.current.getBoundingClientRect();
-        const padding = 60;
+        const padding = 60; 
         const scaleW = (width - padding) / CANVAS_WIDTH;
         const scaleH = (height - padding) / canvasHeight;
-        setScale(Math.min(scaleW, scaleH, 1));
+        setScale(Math.min(scaleW, scaleH));
       }
     };
     updateScale();
-    window.addEventListener('resize', updateScale);
-    return () => window.removeEventListener('resize', updateScale);
+    const resizeObserver = new ResizeObserver(updateScale);
+    if (workspaceRef.current) resizeObserver.observe(workspaceRef.current);
+    return () => resizeObserver.disconnect();
   }, [canvasHeight]);
 
   const addBlock = (type: BlockType, chartType?: ChartType) => {
@@ -73,9 +74,8 @@ const App: React.FC = () => {
       if (placed) break;
     }
 
-    // Если место не найдено, ставим в начало или со смещением, чтобы не блокировать создание
     if (!placed) {
-      foundYUnits = state.blocks.length % GRID_ROWS;
+      foundYUnits = (state.blocks.length * 2) % (GRID_ROWS - 2);
     }
 
     const newBlock: LayoutBlock = {
@@ -98,9 +98,6 @@ const App: React.FC = () => {
         data: JSON.parse(JSON.stringify(newBlock.data || [])), 
         linkedBlockId: chartId
       };
-      
-      // Создаем легенду всегда для чартов, даже если она перекрывает другие блоки,
-      // чтобы пользователь видел ее и мог передвинуть.
       newBlock.linkedBlockId = legendId;
       additionalBlocks.push(legendBlock);
     }
@@ -119,40 +116,12 @@ const App: React.FC = () => {
     });
   };
 
-  const handleSaveProject = () => {
-    const projectData = JSON.stringify(state.blocks);
-    const blob = new Blob([projectData], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `A3_Project_${new Date().toISOString().slice(0, 10)}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const handleLoadProject = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const blocks = JSON.parse(e.target?.result as string);
-        setState(prev => ({ ...prev, blocks, selectedBlockId: null }));
-      } catch (err) {
-        alert("Ошибка при чтении файла проекта.");
-      }
-    };
-    reader.readAsText(file);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
   const handleExportSVG = () => {
     const svgNS = "http://www.w3.org/2000/svg";
     const mainSvg = document.createElementNS(svgNS, "svg");
-    mainSvg.setAttribute("width", "1400");
+    mainSvg.setAttribute("width", CANVAS_WIDTH.toString());
     mainSvg.setAttribute("height", canvasHeight.toString());
-    mainSvg.setAttribute("viewBox", `0 0 1400 ${canvasHeight}`);
+    mainSvg.setAttribute("viewBox", `0 0 ${CANVAS_WIDTH} ${canvasHeight}`);
     mainSvg.setAttribute("xmlns", svgNS);
 
     const defs = document.createElementNS(svgNS, "defs");
@@ -162,7 +131,7 @@ const App: React.FC = () => {
     mainSvg.appendChild(defs);
 
     const bg = document.createElementNS(svgNS, "rect");
-    bg.setAttribute("width", "1400");
+    bg.setAttribute("width", CANVAS_WIDTH.toString());
     bg.setAttribute("height", canvasHeight.toString());
     bg.setAttribute("fill", "#ffffff");
     mainSvg.appendChild(bg);
@@ -190,29 +159,29 @@ const App: React.FC = () => {
           chartTitle.textContent = block.title;
           g.appendChild(chartTitle);
 
-          const line = document.createElementNS(svgNS, "line");
-          line.setAttribute("x1", "0");
-          line.setAttribute("y1", "36");
-          line.setAttribute("x2", "60");
-          line.setAttribute("y2", "36");
-          line.setAttribute("stroke", "#3B82F6");
-          line.setAttribute("stroke-width", "4");
-          g.appendChild(line);
+          const underline = document.createElementNS(svgNS, "rect");
+          underline.setAttribute("x", "0");
+          underline.setAttribute("y", "36");
+          underline.setAttribute("width", "60");
+          underline.setAttribute("height", "4");
+          underline.setAttribute("fill", "#3B82F6");
+          underline.setAttribute("rx", "2");
+          g.appendChild(underline);
         }
 
         if (canvasRef.current) {
-          const container = canvasRef.current.querySelector(`[id="block-${block.id}"] .recharts-responsive-container`);
-          const chartSvg = container?.querySelector('svg');
+          const blockEl = canvasRef.current.querySelector(`[id="block-${block.id}"]`);
+          const chartSvg = blockEl?.querySelector('.recharts-responsive-container svg');
           if (chartSvg) {
             const chartGroup = document.createElementNS(svgNS, "g");
             chartGroup.setAttribute("transform", `translate(0, ${block.title ? 60 : 0})`);
-            chartSvg.childNodes.forEach(node => {
+            Array.from(chartSvg.childNodes).forEach(node => {
               if (node.nodeName !== 'defs') chartGroup.appendChild(node.cloneNode(true));
             });
             g.appendChild(chartGroup);
           }
         }
-      } else if (block.type === BlockType.TITLE || block.type === BlockType.SUBTITLE || block.type === BlockType.TEXT) {
+      } else if (isHeader || block.type === BlockType.TEXT) {
         const fo = document.createElementNS(svgNS, "foreignObject");
         fo.setAttribute("width", blockWidth.toString());
         fo.setAttribute("height", block.h.toString());
@@ -224,7 +193,7 @@ const App: React.FC = () => {
         const fw = block.type === BlockType.TITLE ? "900" : (block.type === BlockType.SUBTITLE ? "600" : "400");
         const color = block.type === BlockType.SUBTITLE ? "#94a3b8" : (block.type === BlockType.TEXT ? "#475569" : "#1e293b");
         
-        div.style.cssText = `font-family: Montserrat, sans-serif; font-size: ${fs}px; font-weight: ${fw}; color: ${color}; line-height: 1.15; padding: 0; padding-left: ${PADDING}px; padding-right: ${PADDING}px; margin: 0; word-break: break-word; overflow: visible;`;
+        div.style.cssText = `font-family: Montserrat, sans-serif; font-size: ${fs}px; font-weight: ${fw}; color: ${color}; line-height: 1.15; padding: 0; padding-left: ${PADDING}px; padding-right: ${PADDING}px; margin: 0; word-break: break-word;`;
         div.innerText = block.type === BlockType.TEXT ? (block.content || "") : (block.title || "");
         fo.appendChild(div);
         g.appendChild(fo);
@@ -236,7 +205,7 @@ const App: React.FC = () => {
         const isVertical = block.legendDirection === 'vertical';
         const container = document.createElement("div");
         container.setAttribute("xmlns", "http://www.w3.org/1999/xhtml");
-        container.style.cssText = `display: flex; flex-direction: ${isVertical ? 'column' : 'row'}; flex-wrap: wrap; gap: ${isVertical ? '8px' : '8px 40px'}; padding: 8px 0; font-family: Montserrat, sans-serif; overflow: visible; align-items: flex-start;`;
+        container.style.cssText = `display: flex; flex-direction: ${isVertical ? 'column' : 'row'}; flex-wrap: wrap; gap: 12px 40px; padding: 8px 0; font-family: Montserrat, sans-serif; align-items: flex-start;`;
 
         block.data?.forEach(d => {
           const item = document.createElement("div");
@@ -261,37 +230,54 @@ const App: React.FC = () => {
     const blob = new Blob(['<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n' + svgStr], { type: 'image/svg+xml;charset=utf-8' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = 'A3_Export_Final.svg';
+    link.download = 'A3_ChartMaster_Vector.svg';
     link.click();
   };
 
   const handleDeleteBlock = () => {
     if (!state.selectedBlockId) return;
-    
     setState(prev => {
       const blockToDelete = prev.blocks.find(b => b.id === state.selectedBlockId);
       if (!blockToDelete) return prev;
-
       let updatedBlocks = prev.blocks.filter(b => b.id !== state.selectedBlockId);
-      
-      // Если у блока есть приликованный блок (легенда или график), удаляем и его
       if (blockToDelete.linkedBlockId) {
         updatedBlocks = updatedBlocks.filter(b => b.id !== blockToDelete.linkedBlockId);
       }
-      
-      // Также проверяем, не ссылается ли какой-то другой блок на этот как на связанный
       updatedBlocks = updatedBlocks.filter(b => b.linkedBlockId !== state.selectedBlockId);
-
-      return { 
-        ...prev, 
-        blocks: updatedBlocks, 
-        selectedBlockId: null 
-      };
+      return { ...prev, blocks: updatedBlocks, selectedBlockId: null };
     });
   };
 
+  const handleSaveProject = () => {
+    const data = JSON.stringify(state.blocks);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `A3_Project_${new Date().toISOString().split('T')[0]}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleLoadProject = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const blocks = JSON.parse(e.target?.result as string);
+        setState(prev => ({ ...prev, blocks, selectedBlockId: null }));
+      } catch (err) {
+        alert("Ошибка при загрузке файла проекта.");
+      }
+    };
+    reader.readAsText(file);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   return (
-    <div className="flex h-screen w-full bg-[#11111b] overflow-hidden font-['Montserrat'] text-slate-200">
+    <div className="flex h-screen w-full bg-[#0d0d14] overflow-hidden font-['Montserrat'] text-slate-200">
+      {/* Sidebar Toolpanel */}
       <aside className="w-16 bg-[#181825] border-r border-slate-800 flex flex-col items-center py-6 gap-6 z-20">
         <div className="p-2 bg-blue-600 rounded-lg text-white mb-4 shadow-lg shadow-blue-500/20"><Square3Stack3DIcon className="w-6 h-6" /></div>
         <div className="flex flex-col gap-4">
@@ -307,33 +293,49 @@ const App: React.FC = () => {
         <IconButton icon={<DocumentTextIcon className="w-6 h-6" />} onClick={() => addBlock(BlockType.TEXT)} tooltip="Текст" />
       </aside>
 
-      <main className="flex-1 flex flex-col relative overflow-hidden bg-[#0d0d14]" onMouseDown={() => setState(p => ({...p, selectedBlockId: null}))}>
-        <header className="h-14 bg-[#181825] border-b border-slate-800 flex items-center justify-between px-8 z-10" onMouseDown={e => e.stopPropagation()}>
-          <h1 className="font-bold text-slate-100 text-[10px] uppercase tracking-[0.5em]">ЧАРТ-<span className="text-blue-500">МАСТЕР</span></h1>
-          <div className="flex items-center gap-4">
-            <button onClick={() => setState(p => ({ ...p, showGrid: !p.showGrid }))} className={`text-[9px] font-black uppercase tracking-widest px-4 py-2 rounded transition-all ${state.showGrid ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/10' : 'bg-slate-800 text-slate-500'}`}>Сетка: {state.showGrid ? 'ВКЛ' : 'ВЫКЛ'}</button>
-            <div className="w-[1px] h-6 bg-slate-800" />
-            <div className="flex gap-2">
-              <button onClick={handleSaveProject} className="p-2 text-slate-400 hover:text-white transition-colors" title="Сохранить проект">
+      {/* Main Workspace */}
+      <main className="flex-1 flex flex-col relative overflow-hidden" onMouseDown={() => setState(p => ({...p, selectedBlockId: null}))}>
+        {/* Header with Controls */}
+        <header className="h-14 bg-[#1e1e2e] border-b border-slate-800 flex items-center justify-between px-6 z-30 shadow-md" onMouseDown={e => e.stopPropagation()}>
+          <div className="flex items-center gap-6">
+            <h1 className="font-black text-slate-100 text-[11px] uppercase tracking-[0.4em]">ЧАРТ-<span className="text-blue-500">МАСТЕР</span></h1>
+            <button onClick={() => setState(p => ({ ...p, showGrid: !p.showGrid }))} className={`text-[10px] font-bold uppercase tracking-widest px-4 py-1.5 rounded-md transition-all border ${state.showGrid ? 'bg-blue-600/20 border-blue-500/50 text-blue-400' : 'bg-slate-800 border-slate-700 text-slate-500'}`}>Сетка: {state.showGrid ? 'ВКЛ' : 'ВЫКЛ'}</button>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button onClick={handleExportSVG} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-lg transition-all shadow-lg shadow-blue-500/20 border border-blue-400 group">
+              <PhotoIcon className="w-4 h-4 group-hover:scale-110 transition-transform" />
+              <span className="text-[10px] font-black uppercase tracking-widest">Экспорт SVG (AI)</span>
+            </button>
+            <div className="w-[1px] h-6 bg-slate-700 mx-2" />
+            <button onClick={handleSaveProject} className="p-2 text-slate-400 hover:text-white transition-colors" title="Сохранить проект">
                 <ArrowDownTrayIcon className="w-5 h-5" />
-              </button>
-              <button onClick={() => fileInputRef.current?.click()} className="p-2 text-slate-400 hover:text-white transition-colors" title="Загрузить проект">
-                <ArrowUpTrayIcon className="w-5 h-5" />
-              </button>
-              <input type="file" ref={fileInputRef} className="hidden" accept=".json" onChange={handleLoadProject} />
-              <button onClick={handleExportSVG} className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-500 transition-all text-[10px] font-bold uppercase tracking-widest shadow-lg shadow-blue-500/20 active:scale-95">SVG ЭКСПОРТ</button>
-            </div>
+            </button>
+            <button onClick={() => fileInputRef.current?.click()} className="p-2 text-slate-400 hover:text-white transition-colors" title="Загрузить проект">
+              <ArrowUpTrayIcon className="w-5 h-5" />
+            </button>
+            <input type="file" ref={fileInputRef} className="hidden" accept=".json" onChange={handleLoadProject} />
           </div>
         </header>
 
-        <div ref={workspaceRef} className="flex-1 relative flex items-center justify-center overflow-hidden">
-          <div style={{ transform: `scale(${scale})`, transformOrigin: 'center' }} className="transition-transform duration-300 ease-out">
-            <Canvas ref={canvasRef} blocks={state.blocks} selectedBlockId={state.selectedBlockId} showGrid={state.showGrid} isExporting={false} onSelectBlock={(id) => setState(p => ({ ...p, selectedBlockId: id }))} onUpdateBlock={updateBlock} />
+        {/* Canvas Display Area */}
+        <div ref={workspaceRef} className="flex-1 relative bg-[#0d0d14] flex items-center justify-center overflow-hidden">
+          <div style={{ transform: `scale(${scale})`, transformOrigin: 'center' }} className="transition-transform duration-500 cubic-bezier(0.4, 0, 0.2, 1)">
+            <Canvas 
+              ref={canvasRef} 
+              blocks={state.blocks} 
+              selectedBlockId={state.selectedBlockId} 
+              showGrid={state.showGrid} 
+              isExporting={false} 
+              onSelectBlock={(id) => setState(p => ({ ...p, selectedBlockId: id }))} 
+              onUpdateBlock={updateBlock} 
+            />
           </div>
         </div>
       </main>
 
-      <aside className="w-80 bg-[#181825] border-l border-slate-800 flex flex-col z-20 shadow-2xl" onMouseDown={e => e.stopPropagation()}>
+      {/* Right Properties Panel */}
+      <aside className="w-80 bg-[#181825] border-l border-slate-800 flex flex-col z-20 shadow-2xl overflow-hidden" onMouseDown={e => e.stopPropagation()}>
         <Inspector 
           selectedBlock={state.blocks.find(b => b.id === state.selectedBlockId) || null} 
           onUpdate={(updates) => state.selectedBlockId && updateBlock(state.selectedBlockId, updates)} 

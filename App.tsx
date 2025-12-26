@@ -277,7 +277,6 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen w-full bg-[#0d0d14] overflow-hidden font-['Montserrat'] text-slate-200">
-      {/* Sidebar Toolpanel */}
       <aside className="w-16 bg-[#181825] border-r border-slate-800 flex flex-col items-center py-6 gap-6 z-20">
         <div className="p-2 bg-blue-600 rounded-lg text-white mb-4 shadow-lg shadow-blue-500/20"><Square3Stack3DIcon className="w-6 h-6" /></div>
         <div className="flex flex-col gap-4">
@@ -293,9 +292,7 @@ const App: React.FC = () => {
         <IconButton icon={<DocumentTextIcon className="w-6 h-6" />} onClick={() => addBlock(BlockType.TEXT)} tooltip="Текст" />
       </aside>
 
-      {/* Main Workspace */}
       <main className="flex-1 flex flex-col relative overflow-hidden" onMouseDown={() => setState(p => ({...p, selectedBlockId: null}))}>
-        {/* Header with Controls */}
         <header className="h-14 bg-[#1e1e2e] border-b border-slate-800 flex items-center justify-between px-6 z-30 shadow-md" onMouseDown={e => e.stopPropagation()}>
           <div className="flex items-center gap-6">
             <h1 className="font-black text-slate-100 text-[11px] uppercase tracking-[0.4em]">ЧАРТ-<span className="text-blue-500">МАСТЕР</span></h1>
@@ -318,7 +315,6 @@ const App: React.FC = () => {
           </div>
         </header>
 
-        {/* Canvas Display Area */}
         <div ref={workspaceRef} className="flex-1 relative bg-[#0d0d14] flex items-center justify-center overflow-hidden">
           <div style={{ transform: `scale(${scale})`, transformOrigin: 'center' }} className="transition-transform duration-500 cubic-bezier(0.4, 0, 0.2, 1)">
             <Canvas 
@@ -334,7 +330,6 @@ const App: React.FC = () => {
         </div>
       </main>
 
-      {/* Right Properties Panel */}
       <aside className="w-80 bg-[#181825] border-l border-slate-800 flex flex-col z-20 shadow-2xl overflow-hidden" onMouseDown={e => e.stopPropagation()}>
         <Inspector 
           selectedBlock={state.blocks.find(b => b.id === state.selectedBlockId) || null} 
